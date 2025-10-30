@@ -3,7 +3,7 @@ import { useAuth } from '@context/AuthContext';
 import Input from '@components/reusable/Input';
 import Button from '@components/reusable/Button';
 import KalshiConnectionService from '@services/kalshi-connection.service';
-import authService from '@services/auth.service';
+import authService from '@services/auth.Service';
 
 const Settings: React.FC = () => {
     const [kalshiCredentials, setKalshiCredentials] = useState({
