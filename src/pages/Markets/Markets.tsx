@@ -80,39 +80,30 @@ const Markets: React.FC = () => {
             setLoading(true);
             setError(null);
 
-            console.log("Testing backend API connection...");
-            const isConnected = await marketsService.testBackendConnection();
+            const response = await marketsService.getLiveMarkets({
+                limit: 12,
+                cursor: cursor
+            });
 
-            if (isConnected) {
-                console.log("Backend API is accessible, fetching live markets...");
-                const response = await marketsService.getLiveMarkets({
-                    limit: 12,
-                    cursor: cursor
+            if (response.success && response.data.markets && response.data.markets.length > 0) {
+                console.log(`Fetched ${response.data.markets.length} live markets from backend`);
+                // Backend already returns data in the correct format, no transformation needed
+                setMarketData(response.data.markets);
+
+                // Update pagination state
+                const newCursor = response.data.cursor;
+                setPagination({
+                    cursor: newCursor,
+                    hasNext: !!newCursor,
+                    hasPrev: currentPage > 1
                 });
 
-                if (response.success && response.data.markets && response.data.markets.length > 0) {
-                    console.log(`Fetched ${response.data.markets.length} live markets from backend`);
-                    // Backend already returns data in the correct format, no transformation needed
-                    setMarketData(response.data.markets);
-
-                    // Update pagination state
-                    const newCursor = response.data.cursor;
-                    setPagination({
-                        cursor: newCursor,
-                        hasNext: !!newCursor,
-                        hasPrev: currentPage > 1
-                    });
-
-                    // Update cursors array for navigation
-                    if (isNext && newCursor) {
-                        setCursors(prev => [...prev, newCursor]);
-                    }
-                } else {
-                    console.log("No markets found in backend response, using fallback data");
-                    setMarketData(fallbackData);
+                // Update cursors array for navigation
+                if (isNext && newCursor) {
+                    setCursors(prev => [...prev, newCursor]);
                 }
             } else {
-                console.log("Backend API not accessible, using fallback data");
+                console.log("No markets found in backend response, using fallback data");
                 setMarketData(fallbackData);
             }
         } catch (error) {

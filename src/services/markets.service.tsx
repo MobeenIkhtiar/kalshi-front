@@ -57,7 +57,7 @@ class MarketsService extends BaseRequestService {
    */
   async testBackendConnection(): Promise<boolean> {
     try {
-      await this.get(`${API_URL}/api/kalshi/markets?limit=1`, {
+      await this.get(`${API_URL}/api/kalshi/markets?limit=12`, {
         headers: {
           'Accept': 'application/json',
         }
