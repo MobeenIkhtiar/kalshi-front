@@ -1,6 +1,6 @@
 import BaseRequestService from "./baseRequest.service";
 
-const API_URL = import.meta.env.VITE_BACKEND_URL;
+const API_URL = import.meta.env.VITE_BACKEND_URL + '/api/kalshi';
 
 interface MarketsQueryParams {
   limit?: number;
@@ -32,7 +32,7 @@ class MarketsService extends BaseRequestService {
       if (params.status) queryParams.append('status', params.status);
       if (params.tickers) queryParams.append('tickers', params.tickers);
 
-      const url = `${API_URL}/api/kalshi/markets${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const url = `${API_URL}/markets${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
       
       const response = await this.get(url, {
         headers: {
@@ -57,7 +57,7 @@ class MarketsService extends BaseRequestService {
    */
   async testBackendConnection(): Promise<boolean> {
     try {
-      await this.get(`${API_URL}/api/kalshi/markets?limit=12`, {
+      await this.get(`${API_URL}/markets?limit=12`, {
         headers: {
           'Accept': 'application/json',
         }

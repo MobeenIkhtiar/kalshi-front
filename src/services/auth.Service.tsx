@@ -1,7 +1,7 @@
 import BaseRequestService from './baseRequest.service';
 
 class AuthService extends BaseRequestService {
-  private baseURL = 'http://localhost:5000/api/auth';
+  private baseURL = import.meta.env.VITE_BACKEND_URL + '/api/auth';
 
   async register(userData: {
     username: string;
