@@ -1,6 +1,6 @@
 import BaseRequestService from "./baseRequest.service";
 
-const API_URL = import.meta.env.VITE_BACKEND_URL + '/api/kalshi';
+const API_URL = import.meta.env.VITE_BACKEND_URL;
 
 interface MarketsQueryParams {
   limit?: number;
@@ -32,7 +32,7 @@ class MarketsService extends BaseRequestService {
       if (params.status) queryParams.append('status', params.status);
       if (params.tickers) queryParams.append('tickers', params.tickers);
 
-      const url = `${API_URL}/markets${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+      const url = `${API_URL}/api/kalshi/markets${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
       
       const response = await this.get(url, {
         headers: {
@@ -53,11 +53,38 @@ class MarketsService extends BaseRequestService {
   }
 
   /**
+   * Fetch a single market by ticker from our backend API
+   */
+  async getMarketByTicker(ticker: string): Promise<any> {
+    try {
+      console.log(`Fetching market ${ticker} from backend API...`);
+      
+      const url = `${API_URL}/api/markets/${ticker}`;
+      
+      const response = await this.get(url, {
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        }
+      }, {
+        fullResponse: true,
+        errorsRedirect: false
+      });
+
+      console.log("Backend API Response for market:", response);
+      return response.data;
+    } catch (error) {
+      console.error("Error fetching market from backend:", error);
+      throw error;
+    }
+  }
+
+  /**
    * Test if backend API is accessible
    */
   async testBackendConnection(): Promise<boolean> {
     try {
-      await this.get(`${API_URL}/markets?limit=12`, {
+      await this.get(`${API_URL}/api/kalshi/markets?limit=12`, {
         headers: {
           'Accept': 'application/json',
         }

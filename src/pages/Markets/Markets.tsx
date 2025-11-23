@@ -1,9 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Input from '@components/reusable/Input';
 import MarketCard from '@components/pageComponents/markets/MarketCard';
 import marketsService from '@services/markets.service';
+import watchlistService from '@services/watchlist.service';
+import { useAuth } from '@context/AuthContext';
 
 const Markets: React.FC = () => {
+    const navigate = useNavigate();
+    const { isAuthenticated } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
     const [marketData, setMarketData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
@@ -15,6 +20,7 @@ const Markets: React.FC = () => {
     });
     const [currentPage, setCurrentPage] = useState(1);
     const [cursors, setCursors] = useState<string[]>([]); // Store cursors for navigation
+    const [watchlistTickers, setWatchlistTickers] = useState<Set<string>>(new Set());
 
     // Fallback data in case API fails
     const fallbackData = [
@@ -115,9 +121,46 @@ const Markets: React.FC = () => {
         }
     };
 
+    // Fetch watchlist status for all markets
+    const fetchWatchlistStatus = async (tickers: string[]) => {
+        if (!isAuthenticated || tickers.length === 0) return;
+
+        try {
+            const watchlistSet = new Set<string>();
+            await Promise.all(
+                tickers.map(async (ticker) => {
+                    try {
+                        const response = await watchlistService.checkWatchlistStatus(ticker);
+                        if (response?.data?.isInWatchlist) {
+                            watchlistSet.add(ticker);
+                        }
+                    } catch (err) {
+                        // Silently fail for individual checks
+                        console.warn(`Failed to check watchlist status for ${ticker}:`, err);
+                    }
+                })
+            );
+            setWatchlistTickers(watchlistSet);
+        } catch (err) {
+            console.error('Error fetching watchlist status:', err);
+        }
+    };
+
     useEffect(() => {
         fetchMarkets();
     }, []);
+
+    // Update watchlist status when market data changes
+    useEffect(() => {
+        if (marketData.length > 0 && isAuthenticated) {
+            const tickers = marketData
+                .map(m => m.ticker || m.market_ticker)
+                .filter(Boolean) as string[];
+            if (tickers.length > 0) {
+                fetchWatchlistStatus(tickers);
+            }
+        }
+    }, [marketData, isAuthenticated]);
 
     // Pagination handlers
     const handleNextPage = () => {
@@ -133,6 +176,38 @@ const Markets: React.FC = () => {
             setCurrentPage(prev => prev - 1);
             setCursors(prev => prev.slice(0, -1)); // Remove last cursor
             fetchMarkets(prevCursor, false);
+        }
+    };
+
+    // Handle watchlist toggle
+    const handleToggleWatchlist = async (ticker: string, isInWatchlist: boolean) => {
+        if (!isAuthenticated) {
+            // Redirect to login or show message
+            navigate('/login');
+            return;
+        }
+
+        try {
+            if (isInWatchlist) {
+                await watchlistService.removeFromWatchlist(ticker);
+                setWatchlistTickers(prev => {
+                    const newSet = new Set(prev);
+                    newSet.delete(ticker);
+                    return newSet;
+                });
+            } else {
+                await watchlistService.addToWatchlist(ticker);
+                setWatchlistTickers(prev => {
+                    const newSet = new Set(prev);
+                    newSet.add(ticker);
+                    return newSet;
+                });
+            }
+        } catch (err: any) {
+            console.error('Error toggling watchlist:', err);
+            const errorMessage = err.response?.data?.message || 'Failed to update watchlist';
+            setError(errorMessage);
+            setTimeout(() => setError(null), 5000);
         }
     };
 
@@ -221,21 +296,37 @@ const Markets: React.FC = () => {
                 ) : (
                     /* Market Cards Grid */
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {marketData.map((market, index) => (
-                            <MarketCard
-                                key={index}
-                                question={market.market_name}
-                                category={market.category}
-                                price={market.price}
-                                roi={market.roi}
-                                volume={market.volume}
-                                probability={market.probability}
-                                sentiment={market.sentiment}
-                                onViewDetails={() => console.log('View details for:', market.market_name)}
-                                onToggleFavorite={() => console.log('Toggle favorite for:', market.market_name)}
-                                isFavorite={false}
-                            />
-                        ))}
+                        {marketData.map((market, index) => {
+                            const ticker = market.ticker || market.market_ticker;
+                            const isInWatchlist = ticker ? watchlistTickers.has(ticker) : false;
+                            
+                            return (
+                                <MarketCard
+                                    key={index}
+                                    question={market.market_name || market.title || market.question}
+                                    category={market.category}
+                                    price={market.price}
+                                    roi={market.roi}
+                                    volume={market.volume}
+                                    probability={market.probability}
+                                    sentiment={market.sentiment}
+                                    ticker={ticker}
+                                    onViewDetails={() => {
+                                        if (ticker) {
+                                            navigate(`/markets/${ticker}`);
+                                        } else {
+                                            console.error('Ticker not found for market:', market);
+                                        }
+                                    }}
+                                    onToggleFavorite={() => {
+                                        if (ticker) {
+                                            handleToggleWatchlist(ticker, isInWatchlist);
+                                        }
+                                    }}
+                                    isFavorite={isInWatchlist}
+                                />
+                            );
+                        })}
                     </div>
                 )
             }

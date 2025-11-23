@@ -9,6 +9,7 @@ interface MarketCardProps {
     volume: string;
     probability: string;
     sentiment: 'Bullish' | 'Bearish';
+    ticker?: string;
     onViewDetails?: () => void;
     onToggleFavorite?: () => void;
     isFavorite?: boolean;
@@ -22,6 +23,7 @@ const MarketCard: React.FC<MarketCardProps> = ({
     volume,
     probability,
     sentiment,
+    ticker: _ticker,
     onViewDetails,
     onToggleFavorite,
     isFavorite = false
@@ -99,10 +101,11 @@ const MarketCard: React.FC<MarketCardProps> = ({
                 <button
                     onClick={onToggleFavorite}
                     className="p-2 hover:bg-gray-700 rounded-lg transition-colors cursor-pointer"
+                    title={isFavorite ? 'Remove from watchlist' : 'Add to watchlist'}
                 >
                     <svg 
-                        className={`w-5 h-5 ${isFavorite ? 'text-yellow-400 fill-current' : 'text-gray-400'}`} 
-                        fill="none" 
+                        className={`w-5 h-5 transition-colors ${isFavorite ? 'text-yellow-400 fill-current' : 'text-gray-400'}`} 
+                        fill={isFavorite ? 'currentColor' : 'none'} 
                         stroke="currentColor" 
                         viewBox="0 0 24 24"
                     >

@@ -1,7 +1,7 @@
 import BaseRequestService from './baseRequest.service';
 
 class KalshiConnectionService extends BaseRequestService {
-  private baseURL = import.meta.env.VITE_BACKEND_URL + '/api/kalshi-connection';
+  private baseURL = 'http://localhost:5000/api/kalshi-connection';
 
   async verifyConnection(kalshiAccessKeyId: string, kalshiPrivateKey: string) {
     const token = localStorage.getItem('token');

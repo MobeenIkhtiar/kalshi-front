@@ -61,6 +61,44 @@ export interface KalshiMarketsResponse {
   markets: KalshiMarket[];
 }
 
+export interface KalshiOrder {
+  order_id: string;
+  user_id: string;
+  client_order_id?: string;
+  ticker: string;
+  side: 'yes' | 'no';
+  action: 'buy' | 'sell';
+  type: string;
+  status: string;
+  yes_price: number;
+  no_price: number;
+  yes_price_dollars: string;
+  no_price_dollars: string;
+  fill_count: number;
+  remaining_count: number;
+  initial_count: number;
+  taker_fees: number;
+  maker_fees: number;
+  taker_fill_cost: number;
+  maker_fill_cost: number;
+  taker_fill_cost_dollars: string;
+  maker_fill_cost_dollars: string;
+  queue_position?: number;
+  taker_fees_dollars: string;
+  maker_fees_dollars: string;
+  expiration_time: string;
+  created_time: string;
+  last_update_time: string;
+  self_trade_prevention_type?: string;
+  order_group_id?: string;
+  cancel_order_on_pause?: boolean;
+}
+
+export interface KalshiOrdersResponse {
+  orders: KalshiOrder[];
+  cursor: string | null;
+}
+
 // Helper function to transform Kalshi market data to our MarketCard format
 export const transformKalshiMarket = (market: KalshiMarket) => {
   // Calculate ROI based on price change

@@ -3,6 +3,7 @@ import Layout from '@components/reusable/layout/Layout';
 import AuthLayout from '@components/reusable/layout/AuthLayout';
 import ProtectedRoute from '@components/reusable/ProtectedRoute';
 import Markets from '@pages/Markets';
+import MarketDetails from '@pages/MarketDetails';
 import Portfolio from '@pages/Portfolio';
 import AIAssistant from '@pages/AIAssistant';
 import Watchlist from '@pages/Watchlist';
@@ -32,6 +33,14 @@ export const router = createBrowserRouter([
         element: (
             <ProtectedRoute>
                 <Layout><Markets /></Layout>
+            </ProtectedRoute>
+        ),
+    },
+    {
+        path: '/markets/:ticker',
+        element: (
+            <ProtectedRoute>
+                <Layout><MarketDetails /></Layout>
             </ProtectedRoute>
         ),
     },
