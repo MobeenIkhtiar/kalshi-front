@@ -17,7 +17,7 @@ interface WatchlistCardProps {
 
 const WatchlistCard: React.FC<WatchlistCardProps> = ({
     question,
-    category,
+    // category,
     price,
     probability,
     probabilityChange,
@@ -27,11 +27,12 @@ const WatchlistCard: React.FC<WatchlistCardProps> = ({
     onRemove
 }) => {
     const isPositiveChange = probabilityChange?.startsWith('+');
-    const tagColors: Record<string, { bg: string; text: string }> = {
-        'Trending': { bg: 'bg-blue-500/20', text: 'text-blue-400' },
-        'Open': { bg: 'bg-green-500/20', text: 'text-green-400' },
-        'Closed': { bg: 'bg-gray-500/20', text: 'text-gray-400' }
-    };
+    
+    // const tagColors: Record<string, { bg: string; text: string }> = {
+    //     'Trending': { bg: 'bg-blue-500/20', text: 'text-blue-400' },
+    //     'Open': { bg: 'bg-green-500/20', text: 'text-green-400' },
+    //     'Closed': { bg: 'bg-gray-500/20', text: 'text-gray-400' }
+    // };
 
     return (
         <div 
