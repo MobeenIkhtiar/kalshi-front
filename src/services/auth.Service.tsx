@@ -1,9 +1,7 @@
 import BaseRequestService from './baseRequest.service';
 
-const API_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000';
-
 class AuthService extends BaseRequestService {
-  private baseURL = `${API_URL}/api/auth`;
+  private baseURL = 'https://kalshi-back.onrender.com/api/auth';
 
   async register(userData: {
     username: string;

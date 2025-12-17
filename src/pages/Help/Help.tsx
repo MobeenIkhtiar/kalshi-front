@@ -167,14 +167,6 @@ const Help: React.FC = () => {
         try {
             setIsSubmitting(true);
 
-            // Log form submission details
-            console.log('Submitting contact form:', {
-                name: formData.name.trim(),
-                email: formData.email.trim().toLowerCase(),
-                messageLength: formData.message.trim().length,
-                filesCount: selectedFiles.length
-            });
-
             // Submit contact form with files
             const response = await contactService.submitContact({
                 name: formData.name.trim(),

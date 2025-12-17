@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import marketsService from '@services/markets.service';
 import watchlistService from '@services/watchlist.service';
 import { useAuth } from '@context/AuthContext';
+import KalshiConnectionService from '@services/kalshi-connection.service';
 import Button from '@components/reusable/Button';
 
 interface MarketDetailsData {
@@ -75,6 +76,8 @@ interface MarketDetailsData {
     step: string;
   }>;
 }
+
+
 
 // Simple Line Chart Component
 const MarketPerformanceChart: React.FC<{ 
@@ -227,12 +230,14 @@ const MarketPerformanceChart: React.FC<{
 const MarketDetails: React.FC = () => {
   const { ticker } = useParams<{ ticker: string }>();
   const navigate = useNavigate();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [market, setMarket] = useState<MarketDetailsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isInWatchlist, setIsInWatchlist] = useState(false);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
+  const [betSizing, setBetSizing] = useState<number | null>(null);
+  const [betSizingLoading, setBetSizingLoading] = useState(false);
 
   useEffect(() => {
     const fetchMarketDetails = async () => {
@@ -282,6 +287,41 @@ const MarketDetails: React.FC = () => {
 
     checkWatchlistStatus();
   }, [ticker, isAuthenticated]);
+
+  // Fetch user portfolio value and calculate bet sizing (5% of portfolio value)
+  useEffect(() => {
+    const fetchBetSizing = async () => {
+      if (!user?.kalshi_access_key_id) {
+        setBetSizing(null);
+        return;
+      }
+
+      try {
+        setBetSizingLoading(true);
+
+        const res = await KalshiConnectionService.getBalance();
+        // console.log('res', res.data);
+        const data = res.data?.data || res.data;
+        const cents =  data?.portfolio_value ?? null;
+
+        if (typeof cents === 'number') {
+          const portfolioValueDollars = cents;
+          const betSize = 0.05 * portfolioValueDollars;
+          setBetSizing(betSize);
+        } else {
+          console.warn('Unable to parse portfolio value for bet sizing');
+          setBetSizing(null);
+        }
+      } catch (e: any) {
+        console.error('Error fetching portfolio value for bet sizing:', e);
+        setBetSizing(null);
+      } finally {
+        setBetSizingLoading(false);
+      }
+    };
+
+    fetchBetSizing();
+  }, [user?.kalshi_access_key_id]);
 
   const handleToggleWatchlist = async () => {
     if (!ticker || !isAuthenticated) {
@@ -339,23 +379,68 @@ const MarketDetails: React.FC = () => {
     return value.toLocaleString();
   };
 
-  const getLiquidityLevel = (liquidityDollars: string): string => {
-    const liquidity = parseFloat(liquidityDollars || '0');
-    if (liquidity >= 10000) return 'High';
-    if (liquidity >= 1000) return 'Medium';
-    return 'Low';
+  // const getLiquidityLevel = (liquidityDollars: string): string => {
+  //   const liquidity = parseFloat(liquidityDollars || '0');
+  //   if (liquidity >= 10000) return 'High';
+  //   if (liquidity >= 1000) return 'Medium';
+  //   return 'Low';
+  // };
+
+  // Convert Kalshi-style price to percentage (0–100)
+  const kalshiToPercent = (price: number): number => {
+    if (price <= 1) return price * 100; // e.g., 0.34 → 34%
+    return price; // e.g., 53 → 53%
   };
 
-  const calculateROI = (current: string, previous: string): number => {
-    const currentPrice = parseFloat(current || '0');
-    const previousPrice = parseFloat(previous || '0');
-    if (previousPrice === 0 || isNaN(previousPrice)) {
-      if (currentPrice > 0) {
-        return ((currentPrice - 0.5) / 0.5) * 100;
-      }
+  const calculateROI = (lastPrice: string, expirationTime: string): number => {
+    const price = parseFloat(lastPrice || '0');
+    if (price === 0 || isNaN(price) || !expirationTime) {
       return 0;
     }
-    return ((currentPrice - previousPrice) / previousPrice) * 100;
+    
+    // Calculate days until expiration
+    const expirationDate = new Date(expirationTime);
+    const now = new Date();
+    let daysUntilExpiration = (expirationDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    daysUntilExpiration = parseFloat(daysUntilExpiration.toFixed(5));
+    // If expiration is in the past or less than 1 day, return 0
+    if (daysUntilExpiration <= 0 || daysUntilExpiration < 1) {
+      return 0;
+    }
+    
+    // Apply formula: ($1.00 / last_price) ^ (365 / days_until_expiration) - 1
+    const base = parseFloat((1.00 / price).toFixed(5));
+    const exponent = 365 / daysUntilExpiration;
+    const roi = Math.pow(base, exponent) - 1;
+    
+    console.log('daysUntilExpiration', daysUntilExpiration);
+    // Return as percentage
+    return roi ;
+  };
+
+  const calculateAmericanOdds = (price: string): number => {
+    const priceDecimal = parseFloat(price || '0');
+    if (priceDecimal === 0 || isNaN(priceDecimal)) {
+      return 0;
+    }
+    
+    // Convert price to percentage (price is in decimal form, e.g., 0.75 = 75%)
+    const pricePercentage = priceDecimal * 100;
+    
+    // Handle edge case at exactly 50%
+    if (pricePercentage === 50) {
+      return 100; // Even odds
+    }
+    
+    // If probability is over 50%
+    if (pricePercentage > 50) {
+      // Formula: (-100 * price as %) / (100 - price as %)
+      return (-100 * pricePercentage) / (100 - pricePercentage);
+    } else {
+      // If probability is under 50%
+      // Formula: (100 * (100 - price as %)) / (price as %)
+      return (100 * (100 - pricePercentage)) / pricePercentage;
+    }
   };
 
   if (loading) {
@@ -385,13 +470,15 @@ const MarketDetails: React.FC = () => {
       </div>
     );
   }
-
+// market.last_price = 0.3;
   // Direct mapping from API response
   const entryPrice = parseFloat(market.previous_price_dollars || '0');
   const currentPrice = parseFloat(market.last_price_dollars || '0');
-  const probability = currentPrice > 0 ? (currentPrice * 100).toFixed(0) : '0';
-  const roi = calculateROI(market.last_price_dollars, market.previous_price_dollars);
-  const liquidityLevel = getLiquidityLevel(market.liquidity_dollars);
+  const probability = market.last_price ? kalshiToPercent(market.last_price).toFixed(0) : '0';
+  const roi = calculateROI(market.last_price.toString(), market.expiration_time);
+  // const liquidityLevel = getLiquidityLevel(market.liquidity_dollars);
+  const gapBetweenBidAsk = market.no_ask - market.no_bid;
+  const americanOdds = calculateAmericanOdds(market.last_price.toString());
 
   const cardStyle = {
     background: 'linear-gradient(292.88deg, #0B0E19 0%, #1C1F2A 95.47%)',
@@ -462,19 +549,16 @@ const MarketDetails: React.FC = () => {
       </div>
 
       {/* KPI Cards Row */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-6">
-        <div className="p-4 rounded-lg" style={cardStyle}>
-          <p className="text-gray-400 text-xs mb-1">Entry Price</p>
-          <p className="text-white font-semibold text-lg">{formatCurrency(market.previous_price_dollars)}</p>
-        </div>
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
+        
         <div className="p-4 rounded-lg" style={cardStyle}>
           <p className="text-gray-400 text-xs mb-1">Current Price</p>
           <p className="text-white font-semibold text-lg">{formatCurrency(market.last_price_dollars)}</p>
         </div>
         <div className="p-4 rounded-lg" style={cardStyle}>
-          <p className="text-gray-400 text-xs mb-1">ROI</p>
+          <p className="text-gray-400 text-xs mb-1">ROI (Annualized Return)</p>
           <p className={`font-semibold text-lg ${roi >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-            {roi >= 0 ? '+' : ''}{roi.toFixed(1)}%
+            {roi >= 0 ? '+' : ''}{roi.toFixed(1)}
           </p>
         </div>
         <div className="p-4 rounded-lg" style={cardStyle}>
@@ -487,7 +571,29 @@ const MarketDetails: React.FC = () => {
         </div>
         <div className="p-4 rounded-lg" style={cardStyle}>
           <p className="text-gray-400 text-xs mb-1">Liquidity</p>
-          <p className="text-white font-semibold text-lg">{liquidityLevel}</p>
+          <p className="text-white font-semibold text-lg">{market.liquidity}</p>
+        </div>
+        <div className="p-4 rounded-lg" style={cardStyle}>
+          <p className="text-gray-400 text-xs mb-1">Gap between Bid/Ask</p>
+          <p className="text-white font-semibold text-lg">{gapBetweenBidAsk}</p>
+        </div>
+        <div className="p-4 rounded-lg" style={cardStyle}>
+          <p className="text-gray-400 text-xs mb-1">Bet Sizing</p>
+          <p className="text-white font-semibold text-lg">
+            {betSizingLoading
+              ? 'Loading…'
+              : betSizing !== null
+                ? `$${betSizing.toFixed(2)}`
+                : user?.kalshi_access_key_id
+                  ? '—'
+                  : 'Not Connected'}
+          </p>
+        </div>
+        <div className="p-4 rounded-lg" style={cardStyle}>
+          <p className="text-gray-400 text-xs mb-1">American betting odds</p>
+          <p className="text-white font-semibold text-lg">
+            {americanOdds > 0 ? '+' : ''}{Math.round(americanOdds)}
+          </p>
         </div>
       </div>
 
@@ -501,241 +607,11 @@ const MarketDetails: React.FC = () => {
       </div>
 
       {/* All Market Fields - Organized by Category */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Basic Information */}
-        <div className="p-6 rounded-lg" style={cardStyle}>
-          <h2 className="text-xl font-semibold text-white mb-4">Basic Information</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Ticker</span>
-              <span className="text-white font-medium">{market.ticker}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Event Ticker</span>
-              <span className="text-white font-medium">{market.event_ticker}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Market Type</span>
-              <span className="text-white font-medium capitalize">{market.market_type}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Status</span>
-              <span className="text-white font-medium capitalize">{market.status}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Category</span>
-              <span className="text-white font-medium">{market.category || 'N/A'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Result</span>
-              <span className="text-white font-medium capitalize">{market.result || 'N/A'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Can Close Early</span>
-              <span className="text-white font-medium">{market.can_close_early ? 'Yes' : 'No'}</span>
-            </div>
-            {market.early_close_condition && (
-              <div className="flex justify-between">
-                <span className="text-gray-400 text-sm">Early Close Condition</span>
-                <span className="text-white font-medium">{market.early_close_condition}</span>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Pricing Information */}
-        <div className="p-6 rounded-lg" style={cardStyle}>
-          <h2 className="text-xl font-semibold text-white mb-4">Pricing Information</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Response Price Units</span>
-              <span className="text-white font-medium">{market.response_price_units}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Price Level Structure</span>
-              <span className="text-white font-medium">{market.price_level_structure || 'N/A'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Tick Size</span>
-              <span className="text-white font-medium">{market.tick_size}</span>
-            </div>
-            {market.strike_type && (
-              <div className="flex justify-between">
-                <span className="text-gray-400 text-sm">Strike Type</span>
-                <span className="text-white font-medium capitalize">{market.strike_type}</span>
-              </div>
-            )}
-            {market.floor_strike !== undefined && (
-              <div className="flex justify-between">
-                <span className="text-gray-400 text-sm">Floor Strike</span>
-                <span className="text-white font-medium">{market.floor_strike}</span>
-              </div>
-            )}
-            {market.cap_strike !== undefined && (
-              <div className="flex justify-between">
-                <span className="text-gray-400 text-sm">Cap Strike</span>
-                <span className="text-white font-medium">{market.cap_strike}</span>
-              </div>
-            )}
-            {market.functional_strike && (
-              <div className="flex justify-between">
-                <span className="text-gray-400 text-sm">Functional Strike</span>
-                <span className="text-white font-medium">{market.functional_strike}</span>
-              </div>
-            )}
-            {market.custom_strike && (
-              <div className="flex justify-between">
-                <span className="text-gray-400 text-sm">Custom Strike</span>
-                <span className="text-white font-medium">{JSON.stringify(market.custom_strike)}</span>
-              </div>
-            )}
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Risk Limit Cents</span>
-              <span className="text-white font-medium">{formatCurrency(market.risk_limit_cents / 100)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Current Prices */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="p-6 rounded-lg" style={cardStyle}>
-          <h2 className="text-xl font-semibold text-white mb-4">YES Prices</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">YES Sub Title</span>
-              <span className="text-white font-medium">{market.yes_sub_title}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">YES Bid (cents)</span>
-              <span className="text-white font-medium">{market.yes_bid}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">YES Bid (dollars)</span>
-              <span className="text-white font-medium">{formatCurrency(market.yes_bid_dollars)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">YES Ask (cents)</span>
-              <span className="text-white font-medium">{market.yes_ask}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">YES Ask (dollars)</span>
-              <span className="text-white font-medium">{formatCurrency(market.yes_ask_dollars)}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-6 rounded-lg" style={cardStyle}>
-          <h2 className="text-xl font-semibold text-white mb-4">NO Prices</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">NO Sub Title</span>
-              <span className="text-white font-medium">{market.no_sub_title}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">NO Bid (cents)</span>
-              <span className="text-white font-medium">{market.no_bid}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">NO Bid (dollars)</span>
-              <span className="text-white font-medium">{formatCurrency(market.no_bid_dollars)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">NO Ask (cents)</span>
-              <span className="text-white font-medium">{market.no_ask}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">NO Ask (dollars)</span>
-              <span className="text-white font-medium">{formatCurrency(market.no_ask_dollars)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Last Price & Previous Prices */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        <div className="p-6 rounded-lg" style={cardStyle}>
-          <h2 className="text-xl font-semibold text-white mb-4">Last Price</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Last Price (cents)</span>
-              <span className="text-white font-medium">{market.last_price}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Last Price (dollars)</span>
-              <span className="text-white font-medium">{formatCurrency(market.last_price_dollars)}</span>
-            </div>
-          </div>
-        </div>
-
-        <div className="p-6 rounded-lg" style={cardStyle}>
-          <h2 className="text-xl font-semibold text-white mb-4">Previous Prices</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Previous Price (cents)</span>
-              <span className="text-white font-medium">{market.previous_price}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Previous Price (dollars)</span>
-              <span className="text-white font-medium">{formatCurrency(market.previous_price_dollars)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Previous YES Bid (cents)</span>
-              <span className="text-white font-medium">{market.previous_yes_bid}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Previous YES Bid (dollars)</span>
-              <span className="text-white font-medium">{formatCurrency(market.previous_yes_bid_dollars)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Previous YES Ask (cents)</span>
-              <span className="text-white font-medium">{market.previous_yes_ask}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-400 text-sm">Previous YES Ask (dollars)</span>
-              <span className="text-white font-medium">{formatCurrency(market.previous_yes_ask_dollars)}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Trading Statistics */}
-      <div className="p-6 rounded-lg mb-6" style={cardStyle}>
-        <h2 className="text-xl font-semibold text-white mb-4">Trading Statistics</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div>
-            <p className="text-gray-400 text-sm mb-1">Volume</p>
-            <p className="text-white font-semibold">{formatNumber(market.volume)}</p>
-          </div>
-          <div>
-            <p className="text-gray-400 text-sm mb-1">Volume (24h)</p>
-            <p className="text-white font-semibold">{formatNumber(market.volume_24h)}</p>
-          </div>
-          <div>
-            <p className="text-gray-400 text-sm mb-1">Open Interest</p>
-            <p className="text-white font-semibold">{formatNumber(market.open_interest)}</p>
-          </div>
-          <div>
-            <p className="text-gray-400 text-sm mb-1">Liquidity (cents)</p>
-            <p className="text-white font-semibold">{formatNumber(market.liquidity)}</p>
-          </div>
-          <div>
-            <p className="text-gray-400 text-sm mb-1">Liquidity (dollars)</p>
-            <p className="text-white font-semibold">{formatCurrency(market.liquidity_dollars)}</p>
-          </div>
-          <div>
-            <p className="text-gray-400 text-sm mb-1">Notional Value (cents)</p>
-            <p className="text-white font-semibold">{formatNumber(market.notional_value)}</p>
-          </div>
-          <div>
-            <p className="text-gray-400 text-sm mb-1">Notional Value (dollars)</p>
-            <p className="text-white font-semibold">{formatCurrency(market.notional_value_dollars)}</p>
-          </div>
-        </div>
-      </div>
+      {/* <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+       </div> */}
 
       {/* Timing Information */}
-      <div className="p-6 rounded-lg mb-6" style={cardStyle}>
+      {/* <div className="p-6 rounded-lg mb-6" style={cardStyle}>
         <h2 className="text-xl font-semibold text-white mb-4">Timing Information</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <div>
@@ -771,74 +647,7 @@ const MarketDetails: React.FC = () => {
             </div>
           )}
         </div>
-      </div>
-
-      {/* Settlement Information */}
-      {(market.settlement_value !== undefined || market.expiration_value) && (
-        <div className="p-6 rounded-lg mb-6" style={cardStyle}>
-          <h2 className="text-xl font-semibold text-white mb-4">Settlement Information</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {market.settlement_value !== undefined && (
-              <>
-                <div>
-                  <p className="text-gray-400 text-sm mb-1">Settlement Value (cents)</p>
-                  <p className="text-white font-semibold">{formatNumber(market.settlement_value)}</p>
-                </div>
-                <div>
-                  <p className="text-gray-400 text-sm mb-1">Settlement Value (dollars)</p>
-                  <p className="text-white font-semibold">{formatCurrency(market.settlement_value_dollars)}</p>
-                </div>
-              </>
-            )}
-            {market.expiration_value && (
-              <div>
-                <p className="text-gray-400 text-sm mb-1">Expiration Value</p>
-                <p className="text-white font-semibold">{market.expiration_value}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Price Ranges */}
-      {market.price_ranges && market.price_ranges.length > 0 && (
-        <div className="p-6 rounded-lg mb-6" style={cardStyle}>
-          <h2 className="text-xl font-semibold text-white mb-4">Price Ranges</h2>
-          <div className="space-y-3">
-            {market.price_ranges.map((range, index) => (
-              <div key={index} className="flex justify-between items-center">
-                <span className="text-gray-400 text-sm">Range {index + 1}</span>
-                <div className="flex gap-4">
-                  <span className="text-white text-sm">Start: {range.start}</span>
-                  <span className="text-white text-sm">End: {range.end}</span>
-                  <span className="text-white text-sm">Step: {range.step}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Market Rules */}
-      {(market.rules_primary || market.rules_secondary) && (
-        <div className="p-6 rounded-lg mb-6" style={cardStyle}>
-          <h2 className="text-xl font-semibold text-white mb-4">Market Rules</h2>
-          <div className="space-y-4">
-            {market.rules_primary && (
-              <div>
-                <p className="text-gray-400 text-sm mb-2">Primary Rules:</p>
-                <p className="text-white text-sm leading-relaxed">{market.rules_primary}</p>
-              </div>
-            )}
-            {market.rules_secondary && market.rules_secondary.trim() !== '' && (
-              <div>
-                <p className="text-gray-400 text-sm mb-2">Secondary Rules:</p>
-                <p className="text-white text-sm leading-relaxed">{market.rules_secondary}</p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      </div> */}
 
       {/* Additional Fields */}
       {(market.mve_collection_ticker || market.primary_participant_key || market.mve_selected_legs) && (

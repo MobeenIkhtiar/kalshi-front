@@ -25,37 +25,27 @@ class ContactService extends BaseRequestService {
 
       // Append files if any
       if (data.files && data.files.length > 0) {
-        console.log(`Preparing to send ${data.files.length} file(s):`);
-        data.files.forEach((file, index) => {
-          console.log(`  File ${index + 1}: ${file.name} (${file.size} bytes, ${file.type})`);
+        data.files.forEach((file) => {
           formData.append('images', file); // Backend expects 'images' field name
         });
-      } else {
-        console.log('No files to attach');
       }
 
       // Use axios directly for FormData (BaseRequestService might not handle it well)
-      // IMPORTANT: Don't set Content-Type manually - axios will set it automatically with boundary
       const token = localStorage.getItem('token');
       const response = await axios.post(
         `${API_URL}/api/contact`,
         formData,
         {
           headers: {
-            // Let axios automatically set Content-Type with boundary for multipart/form-data
+            'Content-Type': 'multipart/form-data',
             ...(token && { Authorization: `Bearer ${token}` })
           }
         }
       );
 
-      console.log('Contact form submitted successfully');
       return response.data;
     } catch (error: any) {
       console.error("Error submitting contact form:", error);
-      if (error.response) {
-        console.error("Response data:", error.response.data);
-        console.error("Response status:", error.response.status);
-      }
       throw error;
     }
   }

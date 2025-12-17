@@ -39,7 +39,7 @@ const Watchlist: React.FC = () => {
     const { isAuthenticated } = useAuth();
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCategory, setSelectedCategory] = useState<string>('All Categories');
-    const [sortBy, _setSortBy] = useState<string>('Change');
+    const [sortBy, setSortBy] = useState<string>('Change');
     const [watchlist, setWatchlist] = useState<TransformedWatchlistItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);

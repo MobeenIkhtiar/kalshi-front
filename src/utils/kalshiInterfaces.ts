@@ -101,13 +101,28 @@ export interface KalshiOrdersResponse {
 
 // Helper function to transform Kalshi market data to our MarketCard format
 export const transformKalshiMarket = (market: KalshiMarket) => {
-  // Calculate ROI based on price change
+  // Calculate ROI using formula: ($1.00 / last_price) ^ (365 / days_until_expiration) - 1
   const currentPrice = parseFloat(market.last_price_dollars);
-  const previousPrice = parseFloat(market.previous_price_dollars);
-  const roi = previousPrice > 0 ? ((currentPrice - previousPrice) / previousPrice) * 100 : 0;
+  let roi = 0;
   
-  // Determine sentiment based on price movement
-  const sentiment = roi > 0 ? 'Bullish' : 'Bearish';
+  if (currentPrice > 0 && market.expiration_time) {
+    // Calculate days until expiration
+    const expirationDate = new Date(market.expiration_time);
+    const now = new Date();
+    const daysUntilExpiration = (expirationDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24);
+    
+    // If expiration is in the future and at least 1 day away
+    if (daysUntilExpiration > 0 && daysUntilExpiration >= 1) {
+      const base = 1.00 / currentPrice;
+      const exponent = 365 / daysUntilExpiration;
+      roi = (Math.pow(base, exponent) - 1) * 100;
+    }
+  }
+  
+  // Determine sentiment based on price movement (using previous price for sentiment)
+  const previousPrice = parseFloat(market.previous_price_dollars);
+  const priceChange = previousPrice > 0 ? ((currentPrice - previousPrice) / previousPrice) * 100 : 0;
+  const sentiment = priceChange > 0 ? 'Bullish' : 'Bearish';
   
   return {
     question: market.title,
